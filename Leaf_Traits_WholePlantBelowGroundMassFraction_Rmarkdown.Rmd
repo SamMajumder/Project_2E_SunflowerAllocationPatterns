@@ -1,0 +1,1329 @@
+---
+title: "Identifying leaf traits that influence whole plant belowground mass fraction"
+author: "Sam Majumder"
+date: "1/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(lattice)
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(MASS)
+
+### importing the training file ###
+
+train <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_1/train_imputed.csv")
+
+test <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_1/test_imputed.csv") 
+
+### eliminate the first two columns ###
+
+train <- train[,c(2:35,37)]
+
+test <- test[,c(2:35,37)]
+
+##### standardizing the data ### ## this important because regression ## 
+
+##### standardizing both the training and the test set ### 
+
+train_standard <- data.frame(scale(train))
+
+test_standard <- data.frame(scale(test))
+```
+
+```{r}
+########## METHOD 1 #### Step AIC
+set.seed(1234)
+StepAIC <- train(WPBMF~.,data=train_standard,method="lmStepAIC",direction="both",trace=FALSE)
+
+Importance <- varImp(StepAIC)
+
+importance_scores_AIC <- data.frame(Importance$importance)
+
+### write out the table ###
+
+write.csv(importance_scores_AIC,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/FEATURE_SELECTION/StepAIC_WPBMF.csv")
+
+
+### 
+p_m_regression <- predict(StepAIC,train_standard)
+
+p_m_regression_test <- predict(StepAIC,test_standard)
+
+RMSE(p_m_regression,train_standard$WPBMF)   ### see if the RMSE improves when you fit models
+
+RMSE(p_m_regression_test,test_standard$WPBMF)   ### see if the RMSE improves when you fit models
+
+########### REDUCING THE DATASET TO ONLY THE MOST IMPORTANT VARIABLES ### 
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_new <- train_standard[,c("WPBMF","LCC","LCon","LP","LS","LWC","LDMC","LLT","LT","LLife","LeafN",
+                               "LeafC","LAC")]
+
+
+test_new <- test_standard[,c("WPBMF","LCC","LCon","LP","LS","LWC","LDMC","LLT","LT","LLife","LeafN",
+                             "LeafC","LAC")]
+
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+M_regression_new <- train(WPBMF~., data = train_new,method='lm',trControl=params)
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+M_regression_new_results <- data.frame(M_regression_new$results)
+
+write.csv(M_regression_new_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/M_regression/M_regression_results.csv")
+
+
+### THE PLOT 
+
+plot(M_regression_new$finalModel)
+
+##### predicting on the test data ##
+
+p_m_regression <- predict(M_regression_new,train_new)
+
+p_m_regression_test <- predict(M_regression_new,test_new)
+
+RMSE(p_m_regression,train_new$WPBMF)
+
+RMSE(p_m_regression_test,test_new$WPBMF)
+
+### MODEL 2 ### LASSO 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(lasso$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/Lasso/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+lasso_results <- data.frame(lasso$results)
+
+write.csv(lasso_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/Lasso/lasso_results.csv")
+
+
+### THE PLOT 
+
+plot(lasso)
+
+plot(lasso$finalModel,xvar = "lambda",label = T)
+plot(lasso$finalModel,xvar = "dev",label = T) 
+
+### make RMSE predictions on test data ## 
+
+p_lasso_train <- predict(lasso,train_new)
+
+p_lasso_test <- predict(lasso,test_new)
+
+RMSE(p_lasso_train,train_new$WPBMF)
+
+RMSE(p_lasso_test,test_new$WPBMF)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new <- train(WPBMF~.,
+                         data=train_new,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params)
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(elastic_net_new$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/Elastic_net/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+elastic_net_results <- data.frame(elastic_net_new$results)
+
+write.csv(elastic_net_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/Elastic_net/elastic_net_results.csv")
+
+
+### THE PLOT 
+
+plot(elastic_net_new)
+
+plot(elastic_net_new$finalModel,xvar = "lambda",label = T)
+plot(elastic_net_new$finalModel,xvar = "dev",label = T) 
+
+
+######### 
+
+### make RMSE predictions on test data ## 
+
+p_elastic_net_train <- predict(elastic_net_new,train_new)
+
+p_elastic_net_test <- predict(elastic_net_new,test_new)
+
+RMSE(p_elastic_net_train,train_new$WPBMF)
+
+RMSE(p_elastic_net_test,test_new$WPBMF)
+
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(ridge$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/Ridge/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+ridge_results <- data.frame(ridge$results)
+
+write.csv(ridge_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/Ridge/Ridge_results.csv")
+
+
+#### plots
+
+plot(ridge$finalModel,xvar = "lambda",label = T)
+
+plot(ridge$finalModel,xvar = "dev",label = T)    
+
+
+############## 
+### make RMSE predictions on test data ## 
+
+p_ridge_train <- predict(ridge,train_new)
+
+p_ridge_test <- predict(ridge,test_new)
+
+RMSE(p_ridge_train,train_new$WPBMF)
+
+RMSE(p_ridge_test,test_new$WPBMF)
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret <- train(WPBMF~.,data=train_new,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+### Best tune 
+
+Rf_caret$bestTune
+
+### results #### 
+
+best_tune <- data.frame(Rf_caret$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/RF/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the rf_caret results in a nice dataframe ### 
+
+Rf_caret_results <- data.frame(Rf_caret$results)
+
+write.csv(Rf_caret_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/RF/Rf_caret_results.csv")
+
+
+#### PREDICT on the unseen data ###
+
+### make RMSE predictions on test data ## 
+
+p_Rf_train <- predict(Rf_caret,train_new)
+
+p_Rf_test <- predict(Rf_caret,test_new)
+
+RMSE(p_Rf_train,train_new$WPBMF)
+
+RMSE(p_Rf_test,test_new$WPBMF)
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm <- train(WPBMF~.,data=train_new,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+### results #### 
+
+best_tune <- data.frame(gbm$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/GBM/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the GBM results in a nice dataframe ### 
+
+GBM_results <- data.frame(gbm$results)
+
+write.csv(GBM_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/MODELLING/GBM/GBM_results.csv")
+
+### make RMSE predictions on test data ## 
+
+p_gbm_train <- predict(gbm,train_new)
+
+p_gbm_test <- predict(gbm,test_new)
+
+RMSE(p_gbm_train,train_new$WPBMF)
+
+RMSE(p_gbm_test,test_new$WPBMF)
+```
+
+```{r}
+
+model_list <- resamples(list(Lasso=lasso,EN=elastic_net_new,Ridge=ridge,Rf=Rf_caret,Gbm=gbm,Lm=M_regression_new))
+
+
+
+summary(model_list)
+
+bwplot(model_list)
+
+```
+
+
+
+```{r}
+###############################
+############################################
+#### METHOD 2 ####### FEATURE SELECTION BY LASSO 
+###################################################
+################################################
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso_features <- train(WPBMF~.,
+                        data=train_standard,method="glmnet",tuneGrid=grid_lasso,
+                        trControl=params)
+
+
+### Imp_features ### 
+
+imp_lasso_features <- varImp(lasso_features)
+
+importance <- data.frame(imp_lasso_features$importance)
+
+write.csv(importance,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/FEATURE_SELECTION/IMPORTANCE.CSV")
+
+
+##### plots 
+
+plot(varImp(lasso_features))    ###Importance plot ### lasso #### 
+
+plot(lasso$finalModel,xvar = "lambda",label = T)
+
+plot(lasso$finalModel,xvar = "dev",label = T)
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(lasso_features$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/FEATURE_SELECTION/best_tune.CSV")
+
+
+
+#### writing out the lasso results in a nice dataframe ### 
+
+lasso_results <- data.frame(lasso_features$results)
+
+write.csv(lasso_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/FEATURE_SELECTION/lasso_results.CSV")
+
+
+### make RMSE predictions on test data ## 
+
+p_lasso_train <- predict(lasso_features,train_standard)
+
+p_lasso_test <- predict(lasso_features,test_standard)
+
+RMSE(p_lasso_train,train_standard$WPBMF)
+
+RMSE(p_lasso_test,test_standard$WPBMF)
+
+
+############### 
+########### REDUCING THE DATASET TO ONLY THE important VARIABLES ### 
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_new <- train_standard[,c("WPBMF","LCon","LDMC","LeafN","LLife","LCC","LWC","LLT","LeafC","LAC","LP",
+                               "LS","LTD","LMT","LT","LD13C","LNRm","LTA","LN.P","LCi","LLC","LPNUE","LeafP",
+                               "LVD","LD15N","LFM")]
+
+
+test_new <- test_standard[,c("WPBMF","LCon","LDMC","LeafN","LLife","LCC","LWC","LLT","LeafC","LAC","LP",
+                             "LS","LTD","LMT","LT","LD13C","LNRm","LTA","LN.P","LCi","LLC","LPNUE","LeafP",
+                             "LVD","LD15N","LFM")]
+
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+ 
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+M_regression_new <- train(WPBMF~., data = train_new,method='lm',trControl=params)
+
+
+### THE RESULTS #### 
+#### writing out the m_regression results in a nice dataframe ### 
+
+M_regression_new_results <- data.frame(M_regression_new$results)
+
+write.csv(M_regression_new_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/M_regression_results.csv")
+
+
+### THE PLOT 
+
+plot(M_regression_new$finalModel)
+
+##### predicting on the test data ##
+
+p_m_regression <- predict(M_regression_new,train_new)
+
+p_m_regression_test <- predict(M_regression_new,test_new)
+
+RMSE(p_m_regression,train_new$WPBMF)
+
+RMSE(p_m_regression_test,test_new$WPBMF)
+
+
+### MODEL 2 ### LASSO 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(lasso$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/LASSO/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+lasso_results <- data.frame(lasso$results)
+
+write.csv(lasso_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/LASSO/Lasso_results.csv")
+
+
+### THE PLOT 
+
+plot(lasso)
+
+plot(lasso$finalModel,xvar = "lambda",label = T)
+plot(lasso$finalModel,xvar = "dev",label = T) 
+
+### make RMSE predictions on test data ## 
+
+p_lasso_train <- predict(lasso,train_new)
+
+p_lasso_test <- predict(lasso,test_new)
+
+RMSE(p_lasso_train,train_new$WPBMF)
+
+RMSE(p_lasso_test,test_new$WPBMF)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new <- train(WPBMF~.,
+                         data=train_new,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params)
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(elastic_net_new$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/Elastic_net/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+elastic_net_results <- data.frame(elastic_net_new$results)
+
+write.csv(elastic_net_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/Elastic_net/elastic_net_results.csv")
+
+### THE PLOT 
+
+
+plot(elastic_net_new$finalModel,xvar = "lambda",label = T)
+
+plot(elastic_net_new$finalModel,xvar = "dev",label = T) 
+
+
+######### 
+
+### make RMSE predictions on test data ## 
+
+p_elastic_net_train <- predict(elastic_net_new,train_new)
+
+p_elastic_net_test <- predict(elastic_net_new,test_new)
+
+RMSE(p_elastic_net_train,train_new$WPBMF)
+
+RMSE(p_elastic_net_test,test_new$WPBMF)
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(ridge$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/Ridge/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+ridge_results <- data.frame(ridge$results)
+
+write.csv(ridge_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/Ridge/ridge_results.csv")
+
+
+#### plots
+
+plot(ridge$finalModel,xvar = "lambda",label = T)
+
+plot(ridge$finalModel,xvar = "dev",label = T)    
+
+
+############## 
+### make RMSE predictions on test data ## 
+
+p_ridge_train <- predict(ridge,train_new)
+
+p_ridge_test <- predict(ridge,test_new)
+
+RMSE(p_ridge_train,train_new$WPBMF)
+
+RMSE(p_ridge_test,test_new$WPBMF)
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret <- train(WPBMF~.,data=train_new,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+### Best tune 
+
+Rf_caret$bestTune
+
+### results #### 
+
+best_tune <- data.frame(Rf_caret$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/RF/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the rf_caret results in a nice dataframe ### 
+
+Rf_caret_results <- data.frame(Rf_caret$results)
+
+write.csv(Rf_caret_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/RF/Rf_caret_results.csv")
+
+
+#### PREDICT on the unseen data ###
+
+### make RMSE predictions on test data ## 
+
+p_Rf_train <- predict(Rf_caret,train_new)
+
+p_Rf_test <- predict(Rf_caret,test_new)
+
+RMSE(p_Rf_train,train_new$WPBMF)
+
+RMSE(p_Rf_test,test_new$WPBMF)
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm <- train(WPBMF~.,data=train_new,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+### results #### 
+
+best_tune <- data.frame(gbm$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/GBM/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the GBM results in a nice dataframe ### 
+
+GBM_results <- data.frame(gbm$results)
+
+write.csv(GBM_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/MODELLING/GBM/GBM_results.csv")
+
+### make RMSE predictions on test data ## 
+
+p_gbm_train <- predict(gbm,train_new)
+
+p_gbm_test <- predict(gbm,test_new)
+
+RMSE(p_gbm_train,train_new$WPBMF)
+
+RMSE(p_gbm_test,test_new$WPBMF)
+
+```
+
+```{r}
+
+model_list <- resamples(list(Lasso=lasso,EN=elastic_net_new,Ridge=ridge,Rf=Rf_caret,Gbm=gbm,Lm=M_regression_new))
+
+
+
+summary(model_list)
+
+bwplot(model_list)
+
+```
+
+
+
+```{r}
+#### METHOD 3 ####
+
+#### Feature selection ## METHOD 3
+###### RFE to figure out how much each variable is expalining the data? 
+
+subsets <- c(1:5,10,20,34)
+
+params_rfe <- rfeControl(functions = rfFuncs,method = "cv",number = 5,verbose = T)
+
+set.seed(1234)
+
+features_2 <- rfe(WPBMF~.,data = train_standard,
+                  sizes=subsets,rfeControl=params_rfe)
+
+features_2
+
+predictors(features_2)
+
+features_2$fit
+
+plot(features_2, type = c("g", "o"))    #### plot the rfe results ### decrease of accuracy with the addition of more variables
+plot(features_2,type = c("g","o"),metric = "Rsquared")                     
+
+
+variables <- data.frame(varImp(features_2))
+
+### writing out this dataframe ### 
+
+write.csv(variables,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/FEATURE_SELECTION/RFE_WPBFM_importance.csv")
+
+
+
+
+
+### writing out the results in a nice excel sheet ### 
+
+rfe_results <- data.frame(features_2$results) 
+
+write.csv(rfe_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/FEATURE_SELECTION/rfe_features.csv")
+
+################################### 
+
+##### 
+
+rfe_best_traits <- data.frame(predictors(features_2))
+
+write.csv(rfe_best_traits,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/FEATURE_SELECTION/rfe_best_features.csv")
+
+
+
+########### REDUCING THE DATASET TO ONLY THE STATTISTICALLY SIGNIFICANT VARIABLES ### 
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_new <- train_standard[,c("WPBMF","LCon","LLife","LeafC","LCirc","LMA","LeafN","LWC","LTD","LAa","LWUE","LAC","LP",    
+                               "LD13C","LPNUE","LCC","LS","LA","LDMC","LDM","LC.N")]
+
+
+test_new <- test_standard[,c("WPBMF","WPBMF","LCon","LLife","LeafC","LCirc","LMA","LeafN","LWC","LTD","LAa","LWUE","LAC","LP",    
+                             "LD13C","LPNUE","LCC","LS","LA","LDMC","LDM","LC.N")]
+
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+M_regression_new <- train(WPBMF~., data = train_new,method='lm',trControl=params)
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+M_regression_new_results <- data.frame(M_regression_new$results)
+
+write.csv(M_regression_new_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/M_regression_results.csv")
+
+
+### THE PLOT 
+
+plot(M_regression_new$finalModel)
+
+##### predicting on the test data ##
+
+p_m_regression <- predict(M_regression_new,train_new)
+
+p_m_regression_test <- predict(M_regression_new,test_new)
+
+RMSE(p_m_regression,train_new$WPBMF)
+
+RMSE(p_m_regression_test,test_new$WPBMF)
+
+
+### MODEL 2 ### LASSO 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(lasso$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/Lasso/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+lasso_results <- data.frame(lasso$results)
+
+write.csv(lasso_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/Lasso/lasso_results.csv")
+
+
+### THE PLOT 
+
+plot(lasso$finalModel,xvar = "lambda",label = T)
+plot(lasso$finalModel,xvar = "dev",label = T) 
+
+### make RMSE predictions on test data ## 
+
+p_lasso_train <- predict(lasso,train_new)
+
+p_lasso_test <- predict(lasso,test_new)
+
+RMSE(p_lasso_train,train_new$WPBMF)
+
+RMSE(p_lasso_test,test_new$WPBMF)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new <- train(WPBMF~.,
+                         data=train_new,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params)
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(elastic_net_new$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/Elastic_net/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+elastic_net_results <- data.frame(elastic_net_new$results)
+
+write.csv(elastic_net_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/Elastic_net/elastic_net_results.csv")
+
+
+### THE PLOT 
+
+plot(elastic_net_new$finalModel,xvar = "lambda",label = T)
+plot(elastic_net_new$finalModel,xvar = "dev",label = T) 
+
+
+######### 
+
+### make RMSE predictions on test data ## 
+
+p_elastic_net_train <- predict(elastic_net_new,train_new)
+
+p_elastic_net_test <- predict(elastic_net_new,test_new)
+
+RMSE(p_elastic_net_train,train_new$WPBMF)
+
+RMSE(p_elastic_net_test,test_new$WPBMF)
+
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(ridge$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/Ridge/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+ridge_results <- data.frame(ridge$results)
+
+write.csv(ridge_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/Ridge/Ridge_results.csv")
+
+
+#### plots
+
+plot(ridge$finalModel,xvar = "lambda",label = T)
+
+plot(ridge$finalModel,xvar = "dev",label = T)    
+
+
+############## 
+### make RMSE predictions on test data ## 
+
+p_ridge_train <- predict(ridge,train_new)
+
+p_ridge_test <- predict(ridge,test_new)
+
+RMSE(p_ridge_train,train_new$WPBMF)
+
+RMSE(p_ridge_test,test_new$WPBMF)
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret <- train(WPBMF~.,data=train_new,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+### Best tune 
+
+Rf_caret$bestTune
+
+### results #### 
+
+best_tune <- data.frame(Rf_caret$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/RF/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the rf_caret results in a nice dataframe ### 
+
+Rf_caret_results <- data.frame(Rf_caret$results)
+
+write.csv(Rf_caret_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/RF/Rf_caret_results.csv")
+
+
+#### PREDICT on the unseen data ###
+
+### make RMSE predictions on test data ## 
+
+p_Rf_train <- predict(Rf_caret,train_new)
+
+p_Rf_test <- predict(Rf_caret,test_new)
+
+RMSE(p_Rf_train,train_new$WPBMF)
+
+RMSE(p_Rf_test,test_new$WPBMF)
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm <- train(WPBMF~.,data=train_new,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+### results #### 
+
+best_tune <- data.frame(gbm$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/GBM/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the GBM results in a nice dataframe ### 
+
+GBM_results <- data.frame(gbm$results)
+
+write.csv(GBM_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/MODELLING/GBM/GBM_results.csv")
+
+### make RMSE predictions on test data ## 
+
+p_gbm_train <- predict(gbm,train_new)
+
+p_gbm_test <- predict(gbm,test_new)
+
+RMSE(p_gbm_train,train_new$WPBMF)
+
+RMSE(p_gbm_test,test_new$WPBMF)
+
+```
+
+```{r}
+
+model_list <- resamples(list(Lasso=lasso,EN=elastic_net_new,Ridge=ridge,Rf=Rf_caret,Gbm=gbm,Lm=M_regression_new))
+
+
+
+summary(model_list)
+
+bwplot(model_list)
+
+```
+
+
+```{r}
+### METHOD 4 ### BORUTA 
+
+library(Boruta)
+set.seed(1234)
+Boruta_features <- Boruta(WPBMF~., data = train_standard,maxRuns=500)
+
+attStats(Boruta_features) ## viewing the importance of each feature
+
+
+## writing out the importance of each feature in a nice excel sheet ###
+
+imp_features_Boruta <- data.frame(attStats(Boruta_features)) 
+
+write.csv(imp_features_Boruta,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/FEATURE_SELECTION/imp_features_boruta.csv")
+
+####################################### 
+
+
+########### REDUCING THE DATASET TO ONLY THE IMPORTANT VARIABLES ### 
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_new <- train_standard
+
+
+test_new <- test_standard
+
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+M_regression_new <- train(WPBMF~., data = train_new,method='lm',trControl=params)
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+M_regression_new_results <- data.frame(M_regression_new$results)
+
+write.csv(M_regression_new_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/M_regression/M_regression_results.csv")
+
+
+### THE PLOT 
+
+plot(M_regression_new$finalModel)
+
+##### predicting on the test data ##
+
+p_m_regression <- predict(M_regression_new,train_new)
+
+p_m_regression_test <- predict(M_regression_new,test_new)
+
+RMSE(p_m_regression,train_new$WPBMF)
+
+RMSE(p_m_regression_test,test_new$WPBMF)
+
+
+### MODEL 2 ### LASSO 
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(lasso$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/LASSO/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+lasso_results <- data.frame(lasso$results)
+
+write.csv(lasso_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/LASSO/lasso_results.csv")
+
+
+### THE PLOT 
+
+plot(lasso$finalModel,xvar = "lambda",label = T)
+plot(lasso$finalModel,xvar = "dev",label = T) 
+
+### make RMSE predictions on test data ## 
+
+p_lasso_train <- predict(lasso,train_new)
+
+p_lasso_test <- predict(lasso,test_new)
+
+RMSE(p_lasso_train,train_new$WPBMF)
+
+RMSE(p_lasso_test,test_new$WPBMF)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new <- train(WPBMF~.,
+                         data=train_new,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params)
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(elastic_net_new$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/Elastic_net/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+elastic_net_results <- data.frame(elastic_net_new$results)
+
+write.csv(elastic_net_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/Elastic_net/elastic_net_results.csv")
+
+
+### THE PLOT 
+
+plot(elastic_net_new$finalModel,xvar = "lambda",label = T)
+plot(elastic_net_new$finalModel,xvar = "dev",label = T) 
+
+
+######### 
+
+### make RMSE predictions on test data ## 
+
+p_elastic_net_train <- predict(elastic_net_new,train_new)
+
+p_elastic_net_test <- predict(elastic_net_new,test_new)
+
+RMSE(p_elastic_net_train,train_new$WPBMF)
+
+RMSE(p_elastic_net_test,test_new$WPBMF)
+
+
+
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+##### BEST TUNE ###
+
+best_tune <- data.frame(ridge$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/Ridge/best_tune.csv")
+
+
+### THE RESULTS #### 
+#### writing out the lasso results in a nice dataframe ### 
+
+ridge_results <- data.frame(ridge$results)
+
+write.csv(ridge_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/Ridge/Ridge_results.csv")
+
+
+#### plots
+
+plot(ridge$finalModel,xvar = "lambda",label = T)
+
+plot(ridge$finalModel,xvar = "dev",label = T)    
+
+
+############## 
+### make RMSE predictions on test data ## 
+
+p_ridge_train <- predict(ridge,train_new)
+
+p_ridge_test <- predict(ridge,test_new)
+
+RMSE(p_ridge_train,train_new$WPBMF)
+
+RMSE(p_ridge_test,test_new$WPBMF)
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret <- train(WPBMF~.,data=train_new,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+### Best tune 
+
+Rf_caret$bestTune
+
+### results #### 
+
+best_tune <- data.frame(Rf_caret$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/RF/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the rf_caret results in a nice dataframe ### 
+
+Rf_caret_results <- data.frame(Rf_caret$results)
+
+write.csv(Rf_caret_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/RF/Rf_caret_results.csv")
+
+
+#### PREDICT on the unseen data ###
+
+### make RMSE predictions on test data ## 
+
+p_Rf_train <- predict(Rf_caret,train_new)
+
+p_Rf_test <- predict(Rf_caret,test_new)
+
+RMSE(p_Rf_train,train_new$WPBMF)
+
+RMSE(p_Rf_test,test_new$WPBMF)
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm <- train(WPBMF~.,data=train_new,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+### results #### 
+
+best_tune <- data.frame(gbm$bestTune)
+
+write.csv(best_tune,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/GBM/best_tune.csv")
+
+### THE RESULTS #### 
+#### writing out the GBM results in a nice dataframe ### 
+
+GBM_results <- data.frame(gbm$results)
+
+write.csv(GBM_results,"D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/MODELLING/GBM/GBM_results.csv")
+
+### make RMSE predictions on test data ## 
+
+p_gbm_train <- predict(gbm,train_new)
+
+p_gbm_test <- predict(gbm,test_new)
+
+RMSE(p_gbm_train,train_new$WPBMF)
+
+RMSE(p_gbm_test,test_new$WPBMF)
+```
+
+
+```{r}
+
+model_list <- resamples(list(Lasso=lasso,EN=elastic_net_new,Ridge=ridge,Rf=Rf_caret,Gbm=gbm,Lm=M_regression_new))
+
+
+
+summary(model_list)
+
+bwplot(model_list)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

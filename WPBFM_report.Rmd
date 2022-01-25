@@ -1,0 +1,649 @@
+---
+title: "Most influential leaf traits driving whole plant below ground mass fraction"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard) 
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(lattice)
+library(ggplot2)
+library(caret)
+
+
+###### AIC ##### 
+
+
+AIC <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/M_regression/FEATURE_SELECTION/StepAIC_WPBMF.csv")
+
+## renaming the first column ### 
+
+AIC_IMP <- rename(AIC,Features=X)
+
+### sort the features ### 
+
+AIC_IMP <- AIC_IMP[order(-AIC_IMP$Overall),]
+
+
+#### Only keeping the top 5 features ##
+
+AIC_IMP <- AIC_IMP[c(1:10),]
+
+p_AIC<-ggplot(AIC_IMP, aes(x=Features, y=Overall, fill=Features)) +
+  geom_bar(stat="identity")+theme_minimal() +
+  coord_flip() +
+  ggtitle("Important Features")+
+  theme(plot.title = element_text(color="black", size=14, face="bold"),
+        axis.title.x = element_text(color="red", size=14, face="bold"),
+        axis.title.y = element_text(color="blue", size=14, face="bold"))
+
+
+
+
+### importing the training file ###
+
+train <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_1/train_imputed.csv")
+
+test <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_1/test_imputed.csv") 
+
+### eliminate the first two columns ###
+
+train <- train[,c(2:35,37)]
+
+test <- test[,c(2:35,37)]
+
+##### standardizing the data ### ## this important because regression ## 
+
+##### standardizing both the training and the test set ### 
+
+train_new <- data.frame(scale(train))
+
+test_new <- data.frame(scale(test))
+
+########### REDUCING THE DATASET TO ONLY THE MOST IMPORTANT VARIABLES ### 
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_aic <- train_new[,c("WPBMF","LCC","LCon","LP","LS","LWC","LDMC","LLT","LT","LLife","LeafN",
+                               "LeafC","LAC")]
+
+
+test_aic <- test_new[,c("WPBMF","LCC","LCon","LP","LS","LWC","LDMC","LLT","LT","LLife","LeafN",
+                             "LeafC","LAC")]
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+set.seed(1234)
+
+M_regression_new_aic <- train(WPBMF~., data = train_aic,method='lm',trControl=params)
+
+
+### MODEL 2 ### LASSO 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso_aic <- train(WPBMF~.,
+               data=train_aic,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new_aic <- train(WPBMF~.,
+                         data=train_aic,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params) 
+
+
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge_aic <- train(WPBMF~.,
+               data=train_aic,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret_aic <- train(WPBMF~.,data=train_aic,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm_aic <- train(WPBMF~.,data=train_aic,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+
+
+model_list_aic <- resamples(list(Lasso=lasso_aic,EN=elastic_net_new_aic,Ridge=ridge_aic,Rf=Rf_caret_aic,Gbm=gbm_aic,Lm=M_regression_new_aic))
+
+
+### Lasso
+
+Lasso <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/LASSO/FEATURE_SELECTION/IMPORTANCE.CSV")
+
+## renaming the first column ### 
+
+lasso_IMP <- rename(Lasso,Features=X)
+
+### sort the features ### 
+
+lasso_IMP <- lasso_IMP[order(-lasso_IMP$Overall),]
+
+
+#### Only keeping the top 5 features ##
+
+lasso_IMP <- lasso_IMP[c(1:10),]
+
+p_lasso<-ggplot(lasso_IMP, aes(x=Features, y=Overall, fill=Features)) +
+  geom_bar(stat="identity")+theme_minimal() +
+  coord_flip() +
+  ggtitle("Important Features")+
+  theme(plot.title = element_text(color="black", size=14, face="bold"),
+        axis.title.x = element_text(color="red", size=14, face="bold"),
+        axis.title.y = element_text(color="blue", size=14, face="bold"))
+
+ggplotly(p_lasso)
+
+
+
+############### 
+########### REDUCING THE DATASET TO ONLY THE important VARIABLES ### 
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_lasso <- train_new[,c("WPBMF","LCon","LDMC","LeafN","LLife","LCC","LWC","LLT","LeafC","LAC","LP",
+                               "LS","LTD","LMT","LT","LD13C","LNRm","LTA","LN.P","LCi","LLC","LPNUE","LeafP",
+                               "LVD","LD15N","LFM")]
+
+
+test_lasso <- test_new[,c("WPBMF","LCon","LDMC","LeafN","LLife","LCC","LWC","LLT","LeafC","LAC","LP",
+                             "LS","LTD","LMT","LT","LD13C","LNRm","LTA","LN.P","LCi","LLC","LPNUE","LeafP",
+                             "LVD","LD15N","LFM")]
+
+
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+set.seed(1234)
+
+M_regression_new_lasso <- train(WPBMF~., data = train_lasso,method='lm',trControl=params)
+
+
+### MODEL 2 ### LASSO 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso_lasso <- train(WPBMF~.,
+               data=train_lasso,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new_lasso <- train(WPBMF~.,
+                         data=train_lasso,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params) 
+
+
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge_lasso <- train(WPBMF~.,
+               data=train_lasso,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret_lasso <- train(WPBMF~.,data=train_lasso,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm_lasso <- train(WPBMF~.,data=train_lasso,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+
+
+model_list_lasso <- resamples(list(Lasso=lasso_lasso,EN=elastic_net_new_lasso,Ridge=ridge_lasso,Rf=Rf_caret_lasso,Gbm=gbm_lasso,Lm=M_regression_new_lasso))
+
+
+###########
+## RFE ###
+
+RFE <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/RFE/FEATURE_SELECTION/RFE_WPBFM_importance.csv")
+
+RFE_Imp <- rename(RFE,Features=X)
+
+## sort the features ## 
+
+RFE_Imp <- RFE_Imp[order(-RFE_Imp$Overall),]
+
+### only keeping the 5 features ## 
+
+RFE_Imp <- RFE_Imp[c(1:5),]
+
+p_rfe <- ggplot(RFE_Imp, aes(x=Features, y=Overall, fill=Features)) +
+  geom_bar(stat="identity")+theme_minimal() +
+  coord_flip() +
+  ggtitle("Important Features")+
+  theme(plot.title = element_text(color="black", size=14, face="bold"),
+        axis.title.x = element_text(color="red", size=14, face="bold"),
+        axis.title.y = element_text(color="blue", size=14, face="bold"))
+
+
+
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_rfe <- train_new[,c("WPBMF","LCon","LLife","LeafC","LCirc","LMA","LeafN","LWC","LTD","LAa","LWUE","LAC","LP",    
+                               "LD13C","LPNUE","LCC","LS","LA","LDMC","LDM","LC.N")]
+
+
+test_rfe <- test_new[,c("WPBMF","WPBMF","LCon","LLife","LeafC","LCirc","LMA","LeafN","LWC","LTD","LAa","LWUE","LAC","LP",    
+                             "LD13C","LPNUE","LCC","LS","LA","LDMC","LDM","LC.N")]
+
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+set.seed(1234)
+
+M_regression_new_rfe <- train(WPBMF~., data = train_rfe,method='lm',trControl=params)
+
+
+### MODEL 2 ### LASSO 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso_rfe <- train(WPBMF~.,
+               data=train_lasso,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new_rfe <- train(WPBMF~.,
+                         data=train_lasso,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params) 
+
+
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge_rfe <- train(WPBMF~.,
+               data=train_lasso,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret_rfe <- train(WPBMF~.,data=train_lasso,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm_rfe <- train(WPBMF~.,data=train_lasso,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+
+
+model_list_rfe <- resamples(list(Lasso=lasso_rfe,EN=elastic_net_new_rfe,Ridge=ridge_rfe,Rf=Rf_caret_rfe,Gbm=gbm_rfe,Lm=M_regression_new_rfe))
+
+
+
+##########################
+### Boruta ### 
+
+Boruta <- read.csv("D:/Drive_C_2_18_21/PhD_WORK/Chapter_2/Leaf_traits_driving_destructive_traits/whole_plant_below_ground_mass_fraction/BORUTA/FEATURE_SELECTION/imp_features_boruta.csv") 
+
+Boruta_Imp <- rename(Boruta,Features=X)
+
+Boruta_Imp <- Boruta_Imp %>% select(Features,meanImp)
+
+### Sort the features by mean imp ### 
+
+Boruta_Imp <- Boruta_Imp[order(-Boruta_Imp$meanImp),]
+
+#### Only keeping the top 10 ### 
+
+Boruta_Imp <- Boruta_Imp[c(1:10),]
+
+p_Boruta <- ggplot(Boruta_Imp, aes(x=Features, y=meanImp, fill=Features)) +
+  geom_bar(stat="identity")+theme_minimal() +
+  coord_flip() +
+  ggtitle("Important Features")+
+  theme(plot.title = element_text(color="black", size=14, face="bold"),
+        axis.title.x = element_text(color="red", size=14, face="bold"),
+        axis.title.y = element_text(color="blue", size=14, face="bold"))
+
+
+########### REDUCING THE DATASET TO ONLY THE IMPORTANT VARIABLES ### 
+### FIT MODELS### 
+
+### remove the unimportant variables ### 
+
+train_new <- train_new
+
+
+test_new <- test_new
+
+
+### MULTIPLE REGRESSION ## MODEL 1 ### 
+
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+set.seed(1234)
+
+M_regression_new_boruta <- train(WPBMF~., data = train_new,method='lm',trControl=params)
+
+
+### MODEL 2 ### LASSO 
+
+
+params <- trainControl(method = "repeatedcv",number = 5,repeats = 5)
+
+grid_lasso <- expand.grid(alpha=1,lambda=seq(0.0001,0.20,length=20))
+
+
+set.seed(1234)
+lasso_boruta <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_lasso,
+               trControl=params)
+
+
+####### 
+## elastic net regression 
+
+grid_elastic_net_boruta <- expand.grid(alpha=seq(0,1,length=10),lambda=seq(0.0001,0.20,length=20))
+
+set.seed(1234)
+elastic_net_new_boruta <- train(WPBMF~.,
+                         data=train_new,method="glmnet",tuneGrid=grid_elastic_net,
+                         trControl=params) 
+
+
+
+################# 
+grid_ridge <- expand.grid(alpha=0,lambda=seq(0.0001,1,length=5)) 
+
+set.seed(1234)
+ridge_boruta <- train(WPBMF~.,
+               data=train_new,method="glmnet",tuneGrid=grid_ridge,
+               trControl=params)
+
+
+
+###############
+### Random forest 
+##########
+set.seed(1234)
+Rf_caret_boruta <- train(WPBMF~.,data=train_new,
+                  method="rf",tuneLength=10,
+                  trControl=params)
+
+
+
+## GBM 
+
+grid_gbm <- expand.grid(n.trees=c(50,100),
+                        interaction.depth=c(6,8),
+                        shrinkage=c(0.1,0.2,0.3),
+                        n.minobsinnode=c(8,10,12)) 
+
+
+params_gbm <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 5)
+
+
+
+
+set.seed(1234)
+gbm_boruta <- train(WPBMF~.,data=train_new,
+             method="gbm",tuneGrid=grid_gbm,trControl=params_gbm)
+
+
+
+
+
+model_list_Boruta <- resamples(list(Lasso=lasso_boruta,EN=elastic_net_new_boruta,Ridge=ridge_boruta,Rf=Rf_caret_boruta,Gbm=gbm_boruta,Lm=M_regression_new_boruta))
+
+
+
+```
+
+
+Workflow 1
+=====================================  
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Top ten features identified by AIC
+
+```{r}
+
+ggplotly(p_AIC)
+
+
+```
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Model Comparison
+
+```{r}
+
+### Model Comparison ###
+
+bwplot(model_list_aic)
+
+
+```
+
+Workflow 2 {data-orientation=rows}
+========================================
+
+Row {data-height=500}
+------------------------------------------------------------------------
+
+### Top five features identified by Lasso
+
+```{r}
+
+ggplotly(p_lasso)
+
+
+```
+
+Row {data-height=500}
+-----------------------------------------------------------------------
+
+### Model Comparison
+
+```{r}
+
+bwplot(model_list_lasso)
+
+
+```
+
+Workflow 3 {data-orientation=rows}
+========================================
+
+Row {data-height=500}
+------------------------------------------------------------------------
+
+### Top ten features identified by Boruta
+
+```{r}
+
+ggplotly(p_rfe)
+
+
+```
+
+Row {data-height=500}
+-----------------------------------------------------------------------
+
+### Model Comparison
+
+```{r}
+
+bwplot(model_list_rfe)
+
+```
+
+
+
+Workflow 4 {data-orientation=rows}
+========================================
+
+Row {data-height=500}
+------------------------------------------------------------------------
+
+### Top ten features identified by Boruta
+
+```{r}
+
+ggplotly(p_Boruta)
+
+
+```
+
+Row {data-height=500}
+-----------------------------------------------------------------------
+
+### Model Comparison
+
+```{r}
+
+bwplot(model_list_Boruta)
+
+```
+
+
+
+
